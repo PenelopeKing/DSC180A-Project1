@@ -1,8 +1,4 @@
-# DSC180A-Project1
 
-Your repository’s README.md file should describe to other people how to use your build script, as well as how to set up the necessary environment. Here’s an example, taken from this repository:
-
-To install the dependencies, run the following command from the root directory of the project: pip install -r requirements.txt.
-Building the project stages using run.py.
-To get the data, from the project root dir, run python run.py data features. This fetches the data, creates features, cleans data and saves the data in the data/temp directory.
-To get the results of statistical test, from the project root dir, run python run.py data features model. This fetches the data, creates the features, creates a statistical model and saves the result of the ttest in the data/out directory.
+How to access and store the necessary data.
+The software dependencies needed to run the code. (In Lesson 8 (to come), we will cover various approaches, including conda environments and Docker.)
+The commands one needs to run to reproduce your results. (In Lesson 3, we will discuss how to create build scripts.)
