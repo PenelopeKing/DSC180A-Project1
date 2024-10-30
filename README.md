@@ -26,8 +26,8 @@ Shows benchmark results for GIN architecture for 3 datasets.
 ### GCN_vs_GAT_layers.ipynb
 Compares performance of GCN and GAT models on CORA dataset as layer numbers increases.
 
-### etl.py
-Contains source code:
+### models.py
+Contains models used for benchmarking
 * Class definitions for GNN models
     * 6 total - each with  __init__() and forward() methods
         * GCNGraph( hidden_channels, dataset, layers)
@@ -41,6 +41,7 @@ Contains source code:
     * node_test(model, data) -> test_acc, train_acc, pred
     * graph_train(model, train_loader, optimizer, criterion = F.nll_loss) -> torch_geometric.nn.model (Graph)
     * graph_test(model, loader, train_loader) ->  test_acc, train_acc
+### etl.py
 * Helper Functions
     * Visualization
         * visualize_graph(data, title) -> networkx graph

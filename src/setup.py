@@ -1,5 +1,6 @@
 # imports
 from etl import *
+from models import *
 import torch
 import torch.nn.functional as F
 import torch
@@ -13,7 +14,7 @@ from torch_geometric.datasets import TUDataset
 from torch_geometric.datasets import Planetoid
 from torch_geometric.loader import DataLoader
 import random
-
+import sys
 # set up seeds
 seed = 123
 torch.manual_seed(seed)
