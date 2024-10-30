@@ -1,7 +1,6 @@
-from gnn import GCNNode, GCNGraph
-import gnn
+# imports
+from etl import *
 import torch
-import helper_funcs
 import torch.nn.functional as F
 import torch
 import networkx as nx
