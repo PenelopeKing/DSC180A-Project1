@@ -12,6 +12,7 @@ Examples of how to implement and benchmark the models for the 3 datasets can be 
 
 ##  File Descriptions
 ### eda.ipynb
+Basic EDA of the 3 datasets.
 
 ### GAT.ipynb
 Shows benchmark results for GAT architecture for 3 datasets.
