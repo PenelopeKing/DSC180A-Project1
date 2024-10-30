@@ -1,3 +1,6 @@
+"""
+All GNN model classes types used in benchmarking
+"""
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -8,8 +11,6 @@ from torch_geometric.nn import  GINConv, GCNConv, GATConv, global_add_pool, glob
 from torch.nn import BatchNorm1d as BatchNorm
 from torch.nn import Linear, ReLU, Sequential, LeakyReLU
 
-
-torch.manual_seed(12345)
 
 # GAT code adjusted from pytorch-geometric exmaple data
 class GATNode(torch.nn.Module):
@@ -46,6 +47,7 @@ def GATNode_train(model, optimizer, data):
     return float(loss)
 
 def GATNode_test(model, data):
+    '''returns accuracy'''
     model.eval()
     pred = model(data.x, data.edge_index).argmax(dim=-1)
     accs = []
@@ -76,6 +78,7 @@ class GATGraph(torch.nn.Module):
 
 
 def GATGraph_train(model, train_loader, train_dataset, optimizer):
+    '''one training pass'''
     model.train()
     total_loss = 0.
     for data in train_loader:
@@ -88,6 +91,7 @@ def GATGraph_train(model, train_loader, train_dataset, optimizer):
     return total_loss / len(train_dataset)
 
 def GATGraph_test(model, loader):
+    '''outputs accuracy'''
     model.eval()
     total_correct = 0
     for data in loader:
@@ -99,9 +103,9 @@ def GATGraph_test(model, loader):
 
 
 # code adjusted from example code
-class GCN(torch.nn.Module):
-    def __init__(self, in_channels, hidden_channels, out_channels, num_layers):
-        super(GCN, self).__init__()
+class GCNNode(torch.nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels, num_layers=2):
+        super(GCNNode, self).__init__()
         self.num_layers = num_layers
         # init layers list
         self.gcn_layers = torch.nn.ModuleList()
@@ -113,7 +117,7 @@ class GCN(torch.nn.Module):
         # output
         self.gcn_layers.append(GCNConv(hidden_channels, out_channels))
 
-    def forward(self, x, edge_index, data):
+    def forward(self, x, edge_index):
         # activation
         for i in range(self.num_layers - 1):
             x = F.relu(self.gcn_layers[i](x, edge_index))
@@ -122,94 +126,115 @@ class GCN(torch.nn.Module):
         return F.log_softmax(x, dim=1)  # log_softmax for classification tasks
 
 
-def train_gcn(model, data, optimizer):
+def GCNNode_train(model, data, optimizer):
+    '''one training pass'''
     model.train()
     optimizer.zero_grad()
-    out = model(data.x, data.edge_index, data)
+    out = model(data.x, data.edge_index)
     loss = F.cross_entropy(out[data.train_mask], data.y[data.train_mask])
-    loss.backward()
-    optimizer.step()
-    return float(loss)
-
-
-def test_gcn(model, data):
-    model.eval()
-    pred = model(data.x, data.edge_index, data).argmax(dim=-1)
-    accs = []
-    for mask in [data.train_mask, data.val_mask, data.test_mask]:
-        accs.append(int((pred[mask] == data.y[mask]).sum()) / int(mask.sum()))
-    return accs
-
-
-
-# code from pytorch-geometric documentation
-class GCNNode(torch.nn.Module):
-    def __init__(self, dataset):
-        super().__init__()
-        self.conv1 = GCNConv(dataset.num_node_features, 16)
-        self.conv2 = GCNConv(16, dataset.num_classes)
-
-    def forward(self, data):
-        x, edge_index = data.x, data.edge_index
-        x = self.conv1(x, edge_index)
-        x = F.relu(x)
-        x = F.dropout(x, training=self.training)
-        x = self.conv2(x, edge_index)
-        return F.log_softmax(x, dim=1)
-    
-def GCNNode_train(model, data, optimizer):
-    optimizer.zero_grad()
-    out = model(data)
-    loss = F.nll_loss(out[data.train_mask], data.y[data.train_mask])
     loss.backward()
     optimizer.step()
     return model
 
+
+def GCNNode_test(model, data):
+    '''returns accuracy'''
+    model.eval()
+    with torch.no_grad():
+        pred = model(data.x, data.edge_index).argmax(dim=-1)
+    test_mask = data.test_mask
+    if test_mask.sum() == 0: 
+        return 0.0  
+    # Calculate accuracy for the test mask
+    acc = (pred[test_mask] == data.y[test_mask]).sum().item() / test_mask.sum().item()
+    return acc
+
+
 class GCNGraph(torch.nn.Module):
     def __init__(self, hidden_channels, dataset):
         super().__init__()
-        torch.manual_seed(12345)
         self.conv1 = GCNConv(dataset.num_node_features, hidden_channels)
         self.conv2 = GCNConv(hidden_channels, hidden_channels)
         self.conv3 = GCNConv(hidden_channels, hidden_channels)
         self.lin = Linear(hidden_channels, dataset.num_classes)
 
     def forward(self, x, edge_index, batch):
-        # 1. Obtain node embeddings 
         x = self.conv1(x, edge_index)
         x = x.relu()
         x = self.conv2(x, edge_index)
         x = x.relu()
         x = self.conv3(x, edge_index)
         x = x.relu()
-        # 2. Readout layer
         x = global_mean_pool(x, batch)  
-        # 3. Apply a final classifier
+        # Final classifier
         x = F.dropout(x, p=0.5, training=self.training)
         x = self.lin(x)
         return x
 
 def GCNGraph_train(model, criterion, optimizer, train_loader):
+    '''one training pass
+    returns model'''
     model.train()
-    for data in train_loader:  # Iterate in batches over the training dataset.
-         out = model(data.x, data.edge_index, data.batch)  # Perform a single forward pass.
-         loss = criterion(out, data.y)  # Compute the loss.
-         loss.backward()  # Derive gradients.
-         optimizer.step()  # Update parameters based on gradients.
-         optimizer.zero_grad()  # Clear gradients.
+    for data in train_loader:  
+         out = model(data.x, data.edge_index, data.batch)  
+         loss = criterion(out, data.y)  # Compute the loss
+         loss.backward()  # Derive gradients
+         optimizer.step()  # Update parameters based on gradients
+         optimizer.zero_grad()  # Clear gradients
+    return model
 
 def GCNGraph_test(model, loader):
+     '''returns accuracy'''
      model.eval()
      correct = 0
-     for data in loader:  # Iterate in batches over the training/test dataset.
+     for data in loader:  
          out = model(data.x, data.edge_index, data.batch)  
-         pred = out.argmax(dim=1)  # Use the class with highest probability.
+         pred = out.argmax(dim=1)  # Use the class with highest probability
          correct += int((pred == data.y).sum())  
      return correct / len(loader.dataset)  
 
+class GINNode(torch.nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels, num_layers):
+        super().__init__()
+        self.convs = torch.nn.ModuleList()
+        for _ in range(num_layers):
+            mlp = MLP([in_channels, hidden_channels, hidden_channels])
+            self.convs.append(GINConv(nn=mlp, train_eps=False))
+            in_channels = hidden_channels
+        self.mlp = MLP([hidden_channels, hidden_channels, out_channels],
+                       norm=None, dropout=0.5)
+    def forward(self, x, edge_index):
+        for conv in self.convs:
+            x = conv(x, edge_index).relu()
+        temp = self.mlp(x)
+        return F.log_softmax(temp, dim=-1)
 
 
-# code adapted from pytorch_geometric code
+def GINNode_train(model, data, optimizer):
+    '''one training pass, returns model'''
+    # train model
+    model.train()
+    optimizer.zero_grad()
+    out = model(data.x, data.edge_index)
+    loss = F.cross_entropy(out[data.train_mask], data.y[data.train_mask])
+    loss.backward()
+    optimizer.step()
+    return model
+
+
+def GINNode_test(model, data):
+    '''returns accuracy'''
+    model.eval()
+    with torch.no_grad():
+        pred = model(data.x, data.edge_index).argmax(dim=-1)
+    test_mask = data.test_mask
+    if test_mask.sum() == 0: 
+        return 0.0  
+    # Calculate accuracy for the test mask
+    acc = (pred[test_mask] == data.y[test_mask]).sum().item() / test_mask.sum().item()
+    return acc, pred
+
+# Code adapted from pytorch_geometric code
 class GINGraph(torch.nn.Module):
     def __init__(self, in_channels, hidden_channels, out_channels, num_layers):
         super().__init__()
@@ -228,33 +253,31 @@ class GINGraph(torch.nn.Module):
         return F.log_softmax(temp, dim=-1)
     
 
-def GIN_train(model, train_loader, optimizer, device):
+def GINGraph_train(model, train_loader, optimizer):
+    '''one trianing pass, returns model'''
     model.train()
     total_loss = 0
     for data in train_loader:
-        data = data.to(device)
-        
         optimizer.zero_grad()
         output = model(data.x, data.edge_index, data.batch)
         loss = F.nll_loss(output, data.y)
         loss.backward()
         optimizer.step()
         total_loss += loss.item()
+    return model
 
-    return total_loss / len(train_loader)
-
-def GIN_test(model, loader, device):
+def GINGraph_test(model, loader):
+    '''otuputs accuracy'''
     model.eval()
     correct = 0
     for data in loader:
-        data = data.to(device)
         output = model(data.x, data.edge_index, data.batch)
         pred = output.argmax(dim=1)
         correct += pred.eq(data.y).sum().item()
     return correct / len(loader.dataset)
 
 # code adapted from pytorch_geometric code
-class GIN2(torch.nn.Module):
+class GINGraph(torch.nn.Module):
     def __init__(self, in_channels, hidden_channels, out_channels, num_layers):
         super().__init__()
 
@@ -269,10 +292,8 @@ class GIN2(torch.nn.Module):
             Linear(hidden_channels, hidden_channels),
             )
             conv = GINConv(mlp, train_eps=True)
-
             self.convs.append(conv)
             self.batch_norms.append(BatchNorm(hidden_channels))
-
             in_channels = hidden_channels
 
         self.lin1 = Linear(hidden_channels, hidden_channels)

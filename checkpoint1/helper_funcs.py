@@ -5,16 +5,30 @@ from torch_geometric.utils import to_networkx # converts to networkx graph
 import numpy as np
 from torch_geometric.transforms import OneHotDegree
 from torch_geometric.loader import DataLoader
+from torch_geometric.datasets import TUDataset
+from torch_geometric.datasets import Planetoid
+import torch.nn.functional as F
+from torch_geometric.loader import DataLoader
+import gnn
+
+def load_data():
+    '''returns 3 datasets used for benchmarking:
+    imdb_dataset, cora_dataset, enzyme_dataset'''
+    imdb_dataset = TUDataset(root='/tmp/IMDB-BINARY', name='IMDB-BINARY')
+    cora_dataset = Planetoid(root='/tmp/Cora', name='Cora')
+    enzyme_dataset = TUDataset(root='/tmp/ENZYMES', name='ENZYMES')
+    return imdb_dataset, cora_dataset, enzyme_dataset
 
 # helper functions
 def visualize_graph(data, title="Graph"):
+    '''graphs graph data using networkx'''
     # turn torch_geometric to networkx graph
     G = to_networkx(data, to_undirected=True)
     # get degrees / max degrees of each node
     degrees = dict(G.degree())
     max_degree = max(degrees.values())
     node_colors = [degrees[node] / max_degree for node in G.nodes()]
-    pos = nx.spring_layout(G, seed=42, k = 0.45)  # You can change the seed for different layouts
+    pos = nx.spring_layout(G, seed=42, k = 0.45)  
     # plot graph
     plt.figure(figsize=(12, 12))
     nx.draw(G, pos, with_labels=False, node_color=node_colors, cmap=plt.cm.rainbow, 
@@ -51,3 +65,55 @@ def preprocess_data(dataset, onehot = False, batch_size = 64):
     train_loader = DataLoader(train_dataset, batch_size, shuffle=True)
     test_loader = DataLoader(train_dataset, batch_size, shuffle=False)
     return train_loader, test_loader
+
+def visualize_by_pred_class(pred, data, title = 'Graph'):
+    node_color = pred.cpu().numpy()
+
+    def visualize_graph2(data, title=title):
+        # turn torch_geometric to networkx graph
+        G = to_networkx(data, to_undirected=True)
+        # get degrees / max degrees of each node
+        degrees = dict(G.degree())
+        max_degree = max(degrees.values())
+        pos = nx.spring_layout(G, seed=42, k = 0.45)  
+        # plot graph
+        plt.figure(figsize=(12, 12))
+        nx.draw(G, pos, with_labels=False, node_color=node_color, cmap=plt.cm.rainbow, 
+                node_size=40, edge_color="gray", alpha = 0.7)
+        plt.title(title) # title
+        plt.show()
+        return G
+    
+    G = visualize_graph2(data, title=title)
+    return G
+
+
+def mod_layers_GCN(dataset, layers, epochs=200):
+    hidden_channels = 32
+    model = gnn.GCNNode(dataset.num_features, hidden_channels,
+                dataset.num_classes, layers)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.005, weight_decay=5e-4)
+    test_acc = 0 
+    for _ in range(epochs):
+        _ = gnn.GCNNode_train(model, dataset, optimizer)
+    test_acc = gnn.GCNNode_test(model, dataset)
+    return test_acc
+
+def mod_layers_GAT(dataset, layers, epochs=200):
+    hidden_channels = 32
+    model = gnn.GATNode(dataset.num_features, hidden_channels,
+                dataset.num_classes, 4, layers)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.005, weight_decay=5e-4)
+    test_acc = 0 
+    for _ in range(epochs):
+        _ = gnn.GATNode_train(model, optimizer, dataset)
+        _, _, test_acc = gnn.GATNode_test(model, dataset)
+    return test_acc
+
+
+def get_data_description(dataset):
+    # Basic Information
+    print(f'Dataset: {dataset}')  # Dataset name
+    print(f'Number of graphs: {len(dataset)}')  # Number of graphs in the dataset
+    print(f'Number of classes: {dataset.num_classes}')
+    print(f'Number of node features: {dataset.num_node_features}')
