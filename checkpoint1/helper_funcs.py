@@ -63,7 +63,7 @@ def preprocess_data(dataset, onehot = False, batch_size = 64):
     train_dataset = dataset[:split]
     test_dataset = dataset[split:]
     train_loader = DataLoader(train_dataset, batch_size, shuffle=True)
-    test_loader = DataLoader(train_dataset, batch_size, shuffle=False)
+    test_loader = DataLoader(test_dataset, batch_size, shuffle=False)
     return train_loader, test_loader
 
 def visualize_by_pred_class(pred, data, title = 'Graph'):
@@ -93,10 +93,9 @@ def mod_layers_GCN(dataset, layers, epochs=200):
     model = gnn.GCNNode(dataset.num_features, hidden_channels,
                 dataset.num_classes, layers)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.005, weight_decay=5e-4)
-    test_acc = 0 
     for _ in range(epochs):
-        _ = gnn.GCNNode_train(model, dataset, optimizer)
-    test_acc = gnn.GCNNode_test(model, dataset)
+        _ = gnn.node_train(model, dataset, optimizer)
+    test_acc, train_acc, pred = gnn.node_test(model, dataset)
     return test_acc
 
 def mod_layers_GAT(dataset, layers, epochs=200):
@@ -104,10 +103,10 @@ def mod_layers_GAT(dataset, layers, epochs=200):
     model = gnn.GATNode(dataset.num_features, hidden_channels,
                 dataset.num_classes, 4, layers)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.005, weight_decay=5e-4)
-    test_acc = 0 
+
     for _ in range(epochs):
-        _ = gnn.GATNode_train(model, optimizer, dataset)
-        _, _, test_acc = gnn.GATNode_test(model, dataset)
+        _ = gnn.node_train(model, dataset, optimizer)
+    test_acc, train_acc, pred = gnn.node_test(model, dataset)
     return test_acc
 
 
