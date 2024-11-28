@@ -15,9 +15,171 @@ import numpy as np
 from torch_geometric.loader import DataLoader
 from torch_geometric.datasets import TUDataset
 from torch_geometric.datasets import Planetoid
-
+import torch_geometric.transforms as T
+from torch_geometric.datasets import ZINC
+from torch_geometric.loader import DataLoader
+from torch_geometric.nn import GINEConv, GPSConv, global_add_pool
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch_geometric.nn.attention import PerformerAttention
+from torch_geometric.datasets import LRGBDataset
+import sys
+import os
+import random
+from torch.utils.data import DataLoader, TensorDataset
+seed = 123
+from torch_geometric.loader import NeighborLoader
+torch.manual_seed(seed)
+random.seed(seed)
+np.random.seed(seed)
+from torch_geometric.utils import get_laplacian, to_dense_adj
+from torch_geometric.data import DataLoader, Dataset
+import torch_geometric
 
 ### HELPER FUNCTIONS ###
+
+class ListToDataset(Dataset):
+    """Wraps a list of Data objects into a Dataset object."""
+    def __init__(self, data_list):
+        super().__init__()
+        self.data_list = data_list
+
+    def len(self):
+        return len(self.data_list)
+
+    def get(self, idx):
+        return self.data_list[idx]
+
+def load_imdb():
+    """Preprocess and train-valid-test split IMDB data."""
+
+    class AddRandomNodeFeatures(T.BaseTransform):
+        def __call__(self, data):
+            if data.x is None:
+                data.x = torch.randn((data.num_nodes, 5))  # Random 5D features
+            return data
+    
+    transform = T.Compose([
+    T.OneHotDegree(max_degree=135),  # Add degree-based features
+    AddRandomNodeFeatures(),         # Add random features if x is missing
+    ])
+
+    imdb_dataset = TUDataset(root='/tmp/IMDB-BINARY', name='IMDB-BINARY')
+    imdb_dataset.transform = transform
+    perm = torch.randperm(len(imdb_dataset))
+    train_idx = perm[:int(0.8 * len(imdb_dataset))]
+    test_idx = perm[int(0.8 * len(imdb_dataset)):]
+    train_dataset = imdb_dataset[train_idx]
+    test_dataset = imdb_dataset[test_idx]
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=64)
+    return train_loader, test_loader
+    
+    
+def load_enzyme():
+    """preprocess and train-valid-test split enzyme data"""
+    enzyme_dataset = TUDataset(root='/tmp/ENZYMES', name='ENZYMES')
+    perm = torch.randperm(len(enzyme_dataset))
+    train_idx = perm[:int(0.8 * len(enzyme_dataset))]
+    test_idx = perm[int(0.8 * len(enzyme_dataset)):]
+    train_dataset = enzyme_dataset[train_idx]
+    test_dataset = enzyme_dataset[test_idx]
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=64)
+    return train_loader, test_loader
+
+'''def load_cora():
+    """Preprocess and train-valid-test mask split CORA data"""
+    cora_dataset = Planetoid(root='/tmp/Cora', name='Cora')[0] # [0]
+    num_nodes = cora_dataset.num_nodes
+    perm = torch.randperm(num_nodes)
+    train_size = int(0.8 * num_nodes)
+    train_indices = perm[:train_size]
+    test_indices = perm[train_size:]
+
+    # Initialize train and test masks
+    cora_dataset.train_mask = torch.zeros(num_nodes, dtype=torch.bool)
+    cora_dataset.test_mask = torch.zeros(num_nodes, dtype=torch.bool)
+
+    # Set the train and test masks
+    cora_dataset.train_mask[train_indices] = True
+    cora_dataset.test_mask[test_indices] = True
+    train_loader = NeighborLoader(
+    data=cora_dataset,
+    num_neighbors=[10, 10],  # Number of neighbors sampled at each layer
+    input_nodes=cora_dataset.train_mask,
+    batch_size=32,
+    shuffle=True
+    )
+
+    test_loader = NeighborLoader(
+        data=cora_dataset,
+        num_neighbors=[10, 10],
+        input_nodes=cora_dataset.test_mask,
+        batch_size=32,
+        shuffle=False
+    )
+    return train_loader, test_loader'''
+
+
+def load_cora():
+    """Preprocess and train-valid-test mask split CORA data"""
+    cora_dataset = Planetoid(root='/tmp/Cora', name='Cora')[0]  # CORA dataset object
+    num_nodes = cora_dataset.num_nodes
+    perm = torch.randperm(num_nodes)
+    train_size = int(0.8 * num_nodes)
+    train_indices = perm[:train_size]
+    test_indices = perm[train_size:]
+
+    # Initialize train and test masks
+    cora_dataset.train_mask = torch.zeros(num_nodes, dtype=torch.bool)
+    cora_dataset.test_mask = torch.zeros(num_nodes, dtype=torch.bool)
+
+    # Set the train and test masks
+    cora_dataset.train_mask[train_indices] = True
+    cora_dataset.test_mask[test_indices] = True
+
+    # Create train and test datasets
+    train_data = TensorDataset(
+        torch.arange(num_nodes)[cora_dataset.train_mask],  # Node indices for training
+        cora_dataset.x[cora_dataset.train_mask],  # Features
+        cora_dataset.y[cora_dataset.train_mask],  # Labels
+    )
+
+    test_data = TensorDataset(
+        torch.arange(num_nodes)[cora_dataset.test_mask],  # Node indices for testing
+        cora_dataset.x[cora_dataset.test_mask],  # Features
+        cora_dataset.y[cora_dataset.test_mask],  # Labels
+    )
+
+    # Create DataLoaders
+    train_loader = DataLoader(train_data, batch_size=32, shuffle=True)
+    test_loader = DataLoader(test_data, batch_size=32, shuffle=False)
+
+    return cora_dataset, train_loader, test_loader
+
+
+def load_cocosp(parallel=True):
+    """preprocess and train-valid-test split coco-sp data"""
+    transform = T.AddRandomWalkPE(walk_length=20, attr_name='pe')
+    coco_dataset = LRGBDataset(root='/tmp/COCO-SP', name='COCO-SP')
+    coco_dataset = coco_dataset.shuffle()
+    # Apply the transform and subset each dataset
+    coco_dataset = [transform(data) for data in coco_dataset]
+
+    n = len(coco_dataset)
+    train_split = int(n * 0.8)
+    batch_size = 64
+
+    # Split the dataset
+    train_dataset = coco_dataset[:train_split]
+    test_dataset = coco_dataset[train_split:]
+
+    # Create DataLoaders
+    train_loader = DataLoader(train_dataset, batch_size, shuffle=True, num_workers = 4)
+    test_loader = DataLoader(test_dataset, batch_size, shuffle=False, num_workers = 4)
+    #train_loader, test_loader = preprocess_data(coco_dataset, onehot=False)
+    return train_loader, test_loader
+
 
 def load_data():
     '''returns 3 datasets used for benchmarking:
@@ -26,6 +188,15 @@ def load_data():
     cora_dataset = Planetoid(root='/tmp/Cora', name='Cora')
     enzyme_dataset = TUDataset(root='/tmp/ENZYMES', name='ENZYMES')
     return imdb_dataset, cora_dataset, enzyme_dataset
+
+def load_data_all():
+    '''returns 3 datasets used for benchmarking:
+    imdb_dataset, cora_dataset, enzyme_dataset, cocosp dataset'''
+    imdb_dataset = TUDataset(root='/tmp/IMDB-BINARY', name='IMDB-BINARY')
+    cora_dataset = Planetoid(root='/tmp/Cora', name='Cora')
+    enzyme_dataset = TUDataset(root='/tmp/ENZYMES', name='ENZYMES')
+    coco_dataset = LRGBDataset(root='/tmp/COCO-SP', name='COCO-SP')
+    return imdb_dataset, cora_dataset, enzyme_dataset, coco_dataset
 
 # helper functions
 def visualize_graph(data, title="Graph"):
@@ -65,13 +236,21 @@ def preprocess_data(dataset, onehot = False, batch_size = 64):
     if onehot: 
         transform = OneHotDegree(max_degree=300)
         dataset.transform = transform
-    dataset = dataset.shuffle()
+
     n = len(dataset)
-    split = int(n*0.8)
-    train_dataset = dataset[:split]
-    test_dataset = dataset[split:]
+    train_split = int(n * 0.8)
+    #val_split = int(n * 0.9)
+
+    # Split the dataset
+    train_dataset = dataset[:train_split]
+    #val_dataset = dataset[train_split:val_split]
+    test_dataset = dataset[train_split:]
+
+    # Create DataLoaders
     train_loader = DataLoader(train_dataset, batch_size, shuffle=True)
+    #val_loader = DataLoader(val_dataset, batch_size, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size, shuffle=False)
+ 
     return train_loader, test_loader
 
 def visualize_by_pred_class(pred, data, title = 'Graph'):

@@ -1,5 +1,4 @@
 """GNN models used for benchmarking"""
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -16,7 +15,24 @@ import numpy as np
 from torch_geometric.loader import DataLoader
 from torch_geometric.datasets import TUDataset
 from torch_geometric.datasets import Planetoid
+import os.path as osp
+from typing import Any, Dict, Optional
 
+from torch.nn import Linear, ModuleList, ReLU, Sequential
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+import torch_geometric.transforms as T
+from torch_geometric.datasets import TUDataset
+from torch_geometric.loader import DataLoader
+from torch_geometric.nn import GINEConv, GPSConv, global_add_pool
+from torch_geometric.nn.attention import PerformerAttention
+from torch.nn import (
+    BatchNorm1d,
+    Embedding,
+    Linear,
+    ModuleList,
+    ReLU,
+    Sequential,
+)
 
 ### GNN CLASSES ###
 
@@ -230,6 +246,7 @@ def node_train(model, data, optimizer):
     optimizer.step()
     return model
 
+@torch.no_grad()
 def node_test(model, data):
     '''returns test accuracy and train accuracy'''
     model.eval()
@@ -265,7 +282,7 @@ def graph_train(model, train_loader, optimizer, criterion = F.nll_loss):
         total_loss += loss.item()
     return model
 
-
+@torch.no_grad()
 def graph_test(model, loader, train_loader=None):
     '''outputs test accuracy and optionally train accuracy'''
     model.eval()
@@ -291,3 +308,213 @@ def graph_test(model, loader, train_loader=None):
 
     return test_acc, train_acc
 
+
+### GRAPHGPS ###
+
+# RedrawProjection class for PerformerAttention
+class RedrawProjection:
+    def __init__(self, model: torch.nn.Module, redraw_interval: Optional[int] = None):
+        self.model = model
+        self.redraw_interval = redraw_interval
+        self.num_last_redraw = 0
+
+    def redraw_projections(self):
+        if not self.model.training or self.redraw_interval is None:
+            return
+        if self.num_last_redraw >= self.redraw_interval:
+            fast_attentions = [
+                module for module in self.model.modules()
+                if isinstance(module, PerformerAttention)
+            ]
+            for fast_attention in fast_attentions:
+                fast_attention.redraw_projection_matrix()
+            self.num_last_redraw = 0
+        else:
+            self.num_last_redraw += 1
+            
+# Define the GPS model
+class GPS(torch.nn.Module):
+    def __init__(self, num_node_features:int, channels: int, num_layers: int, attn_type: str, attn_kwargs: Dict[str, Any]):
+        super().__init__()
+        self.node_emb = Linear(num_node_features or 5, channels)
+        self.convs = ModuleList()
+        for _ in range(num_layers):
+            nn = Sequential(
+                Linear(channels, channels),
+                ReLU(),
+                Linear(channels, channels),
+            )
+            # Set edge_dim to 1 for dummy edge attributes
+            conv = GPSConv(channels, GINEConv(nn, edge_dim=1), heads=4,
+                           attn_type=attn_type, attn_kwargs=attn_kwargs)
+            self.convs.append(conv)
+
+        self.mlp = Sequential(
+            Linear(channels, channels // 2),
+            ReLU(),
+            Linear(channels // 2, channels // 4),
+            ReLU(),
+            Linear(channels // 4, 1),
+        )
+        self.redraw_projection = RedrawProjection(
+            self.convs, redraw_interval=1000 if attn_type == 'performer' else None)
+
+    def forward(self, x, edge_index, edge_attr, batch):
+        x = self.node_emb(x)
+
+        # Handle missing edge attributes
+        if edge_attr is None:
+            edge_attr = torch.ones((edge_index.size(1), 1), device=edge_index.device)
+
+        for conv in self.convs:
+            x = conv(x, edge_index, batch, edge_attr=edge_attr)
+        x = global_add_pool(x, batch)
+        return self.mlp(x)
+
+
+
+def train_gps(model, train_loader, optimizer, device):
+    model.train()
+    total_loss = 0
+    for data in train_loader:
+        data = data.to(device)
+        # Redraw projection matrices for Performer attention
+        model.redraw_projection.redraw_projections()
+        out = model(data.x, data.edge_index, data.edge_attr, data.batch)
+        loss = torch.nn.functional.binary_cross_entropy_with_logits(out.squeeze(), data.y.float())
+        loss.backward()
+        total_loss += loss.item() * data.num_graphs
+        optimizer.step()
+    return total_loss / len(train_loader.dataset)
+
+@torch.no_grad()
+def test_gps(model, loader, device):
+    model.eval()
+    total_correct = 0
+    for data in loader:
+        data = data.to(device)
+        out = model(data.x, data.edge_index, data.edge_attr, data.batch)
+        preds = (torch.sigmoid(out.squeeze()) > 0.5).long()
+        total_correct += (preds == data.y).sum().item()
+    return total_correct / len(loader.dataset)
+
+
+class GPSNodeClassifier(torch.nn.Module):
+    def __init__(self, num_node_features, hidden_channels, num_classes, num_layers):
+        super(GPSNodeClassifier, self).__init__()
+        self.convs = torch.nn.ModuleList()
+        self.convs.append(GCNConv(num_node_features, hidden_channels))
+        for _ in range(num_layers - 1):
+            self.convs.append(GCNConv(hidden_channels, hidden_channels))
+        self.lin = torch.nn.Linear(hidden_channels, num_classes)
+
+    def forward(self, x, edge_index):
+        for conv in self.convs:
+            x = conv(x, edge_index)
+            x = F.relu(x)
+        out = self.lin(x)
+        return out
+
+
+def train_gps_nodes(model, data, optimizer, device):
+    model.train()
+    data = data.to(device)
+    optimizer.zero_grad()
+    # Redraw projection matrices for Performer attention (if applicable)
+    # model.redraw_projection.redraw_projections()
+    out = model(data.x, data.edge_index)
+    loss = torch.nn.functional.cross_entropy(out[data.train_mask], data.y[data.train_mask])
+    loss.backward()
+    optimizer.step()
+    return loss.item()
+
+
+@torch.no_grad()
+def test_gps_nodes(model, data, device):
+    model.eval()
+    data = data.to(device)
+    out = model(data.x, data.edge_index)
+    pred = out.argmax(dim=1)
+
+    # Calculate training accuracy
+    train_correct = pred[data.train_mask] == data.y[data.train_mask]
+    train_acc = int(train_correct.sum()) / int(data.train_mask.sum())
+
+    # Calculate test accuracy
+    test_correct = pred[data.test_mask] == data.y[data.test_mask]
+    test_acc = int(test_correct.sum()) / int(data.test_mask.sum())
+
+    return train_acc, test_acc
+
+# GPS class from pytorch geometric code
+class GPSLongRange(torch.nn.Module):
+    def __init__(self, channels: int, pe_dim: int, num_layers: int,
+                 attn_type: str, attn_kwargs: Dict[str, Any]):
+        super().__init__()
+
+        # Use Linear layers instead of Embedding layers for continuous inputs
+        self.node_emb = Linear(14, channels - pe_dim)  # Adjust input dimension based on `data.x.shape[1]`
+        self.pe_lin = Linear(20, pe_dim)
+        self.pe_norm = BatchNorm1d(20)
+        self.edge_emb = Linear(2, channels)  # Adjust input dimension based on `data.edge_attr.shape[1]`
+
+        self.convs = ModuleList()
+        for _ in range(num_layers):
+            nn = Sequential(
+                Linear(channels, channels),
+                ReLU(),
+                Linear(channels, channels),
+            )
+            conv = GPSConv(channels, GINEConv(nn), heads=4,
+                           attn_type=attn_type, attn_kwargs=attn_kwargs)
+            self.convs.append(conv)
+
+        self.mlp = Sequential(
+            Linear(channels, channels // 2),
+            ReLU(),
+            Linear(channels // 2, channels // 4),
+            ReLU(),
+            Linear(channels // 4, 1),
+        )
+        self.redraw_projection = RedrawProjection(
+            self.convs,
+            redraw_interval=1000 if attn_type == 'performer' else None)
+
+    def forward(self, x, pe, edge_index, edge_attr, batch):
+        x_pe = self.pe_norm(pe)
+        x = torch.cat((self.node_emb(x), self.pe_lin(x_pe)), 1)
+
+        edge_attr = self.edge_emb(edge_attr)
+
+        for conv in self.convs:
+            x = conv(x, edge_index, batch, edge_attr=edge_attr)
+
+        # Skip global pooling for node-level predictions
+        x = self.mlp(x)  # Output will now be [num_nodes, 1] to match `data.y`
+        return x
+    
+
+
+def gps_lr_train(model, train_loader, optimizer):
+    model.train()
+    total_loss = 0
+    for data in train_loader:
+        optimizer.zero_grad()
+        model.redraw_projection.redraw_projections()
+        out = model(data.x, data.pe, data.edge_index, data.edge_attr,
+                    data.batch)
+        loss = (out.squeeze() - data.y).abs().mean()
+        loss.backward()
+        total_loss += loss.item() * data.num_graphs
+        optimizer.step()
+    return total_loss / len(train_loader.dataset)
+
+@torch.no_grad()
+def gps_lr_test(model, loader):
+    model.eval()
+    total_error = 0
+    for data in loader:
+        out = model(data.x, data.pe, data.edge_index, data.edge_attr,
+                    data.batch)
+        total_error += (out.squeeze() - data.y).abs().sum().item()
+    return total_error / len(loader.dataset)
