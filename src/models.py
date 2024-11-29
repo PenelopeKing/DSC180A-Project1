@@ -34,6 +34,14 @@ from torch.nn import (
     Sequential,
 )
 
+import torch
+from torch.nn import functional as F
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch_geometric.datasets import LRGBDataset
+from torch_geometric.loader import DataLoader
+from torch_geometric.nn import GCNConv, global_mean_pool
+import multiprocessing as mp
+
 ### GNN CLASSES ###
 
 # GAT code adjusted from pytorch-geometric exmaple data
@@ -134,20 +142,20 @@ class GCNNode(torch.nn.Module):
         return F.log_softmax(x, dim=1)  # log_softmax for classification tasks
 
 class GCNGraph(torch.nn.Module):
-    def __init__(self, hidden_channels, dataset, layers=2):
+    def __init__(self, hidden_channels, num_node_features, num_classes, layers=2):
         super().__init__()
         self.layers = layers
         
         # Initialize the first convolutional layer
         self.convs = torch.nn.ModuleList()
-        self.convs.append(GCNConv(dataset.num_node_features, hidden_channels))
+        self.convs.append(GCNConv(num_node_features, hidden_channels))
         
         # Add additional convolutional layers
         for _ in range(1, layers):
             self.convs.append(GCNConv(hidden_channels, hidden_channels))
         
         # Linear layer for the final classification
-        self.lin = Linear(hidden_channels, dataset.num_classes)
+        self.lin = Linear(hidden_channels, num_classes)
 
     def forward(self, x, edge_index, batch):
         # Pass through each convolutional layer with ReLU activation
@@ -240,6 +248,7 @@ def node_train(model, data, optimizer):
     # train model
     model.train()
     optimizer.zero_grad()
+    data.x = data.x.float()
     out = model(data.x, data.edge_index)
     loss = F.cross_entropy(out[data.train_mask], data.y[data.train_mask])
     loss.backward()
@@ -250,6 +259,7 @@ def node_train(model, data, optimizer):
 def node_test(model, data):
     '''returns test accuracy and train accuracy'''
     model.eval()
+    data.x = data.x.float()
     with torch.no_grad():
         pred = model(data.x, data.edge_index).argmax(dim=-1)
     
@@ -275,6 +285,7 @@ def graph_train(model, train_loader, optimizer, criterion = F.nll_loss):
     total_loss = 0
     for data in train_loader:
         optimizer.zero_grad()
+        data.x = data.x.float()
         output = model(data.x, data.edge_index, data.batch)
         loss = criterion(output, data.y)
         loss.backward()
@@ -283,22 +294,24 @@ def graph_train(model, train_loader, optimizer, criterion = F.nll_loss):
     return model
 
 @torch.no_grad()
-def graph_test(model, loader, train_loader=None):
+def graph_test(model, test_loader, train_loader=None):
     '''outputs test accuracy and optionally train accuracy'''
     model.eval()
     correct_test = 0
 
     # Calculate test accuracy
-    for data in loader:
+    for data in test_loader:
+        data.x = data.x.float()
         output = model(data.x, data.edge_index, data.batch)
         pred = output.argmax(dim=1)
         correct_test += pred.eq(data.y).sum().item()
-    test_acc = correct_test / len(loader.dataset)
+    test_acc = correct_test / len(test_loader.dataset)
     
     # Calculate train accuracy if train_loader is provided
     if train_loader is not None:
         correct_train = 0
         for data in train_loader:
+            data.x = data.x.float()
             output = model(data.x, data.edge_index, data.batch)
             pred = output.argmax(dim=1)
             correct_train += pred.eq(data.y).sum().item()
@@ -333,7 +346,7 @@ class RedrawProjection:
             self.num_last_redraw += 1
             
 # Define the GPS model
-class GPS(torch.nn.Module):
+class GPSGraph(torch.nn.Module):
     def __init__(self, num_node_features:int, channels: int, num_layers: int, attn_type: str, attn_kwargs: Dict[str, Any]):
         super().__init__()
         self.node_emb = Linear(num_node_features or 5, channels)
@@ -373,11 +386,12 @@ class GPS(torch.nn.Module):
 
 
 
-def train_gps(model, train_loader, optimizer, device):
+def train_gps_graph(model, train_loader, optimizer, device):
     model.train()
     total_loss = 0
     for data in train_loader:
         data = data.to(device)
+        data.x = data.x.float()
         # Redraw projection matrices for Performer attention
         model.redraw_projection.redraw_projections()
         out = model(data.x, data.edge_index, data.edge_attr, data.batch)
@@ -388,20 +402,21 @@ def train_gps(model, train_loader, optimizer, device):
     return total_loss / len(train_loader.dataset)
 
 @torch.no_grad()
-def test_gps(model, loader, device):
+def test_gps_graph(model, loader, device):
     model.eval()
     total_correct = 0
     for data in loader:
         data = data.to(device)
+        data.x = data.x.float()
         out = model(data.x, data.edge_index, data.edge_attr, data.batch)
         preds = (torch.sigmoid(out.squeeze()) > 0.5).long()
         total_correct += (preds == data.y).sum().item()
     return total_correct / len(loader.dataset)
 
 
-class GPSNodeClassifier(torch.nn.Module):
+class GPSNode(torch.nn.Module):
     def __init__(self, num_node_features, hidden_channels, num_classes, num_layers):
-        super(GPSNodeClassifier, self).__init__()
+        super(GPSNode, self).__init__()
         self.convs = torch.nn.ModuleList()
         self.convs.append(GCNConv(num_node_features, hidden_channels))
         for _ in range(num_layers - 1):
@@ -422,6 +437,7 @@ def train_gps_nodes(model, data, optimizer, device):
     optimizer.zero_grad()
     # Redraw projection matrices for Performer attention (if applicable)
     # model.redraw_projection.redraw_projections()
+    data.x = data.x.float()
     out = model(data.x, data.edge_index)
     loss = torch.nn.functional.cross_entropy(out[data.train_mask], data.y[data.train_mask])
     loss.backward()
@@ -433,6 +449,7 @@ def train_gps_nodes(model, data, optimizer, device):
 def test_gps_nodes(model, data, device):
     model.eval()
     data = data.to(device)
+    data.x = data.x.float()
     out = model(data.x, data.edge_index)
     pred = out.argmax(dim=1)
 
@@ -446,75 +463,57 @@ def test_gps_nodes(model, data, device):
 
     return train_acc, test_acc
 
-# GPS class from pytorch geometric code
 class GPSLongRange(torch.nn.Module):
-    def __init__(self, channels: int, pe_dim: int, num_layers: int,
-                 attn_type: str, attn_kwargs: Dict[str, Any]):
-        super().__init__()
-
-        # Use Linear layers instead of Embedding layers for continuous inputs
-        self.node_emb = Linear(14, channels - pe_dim)  # Adjust input dimension based on `data.x.shape[1]`
-        self.pe_lin = Linear(20, pe_dim)
-        self.pe_norm = BatchNorm1d(20)
-        self.edge_emb = Linear(2, channels)  # Adjust input dimension based on `data.edge_attr.shape[1]`
-
-        self.convs = ModuleList()
-        for _ in range(num_layers):
-            nn = Sequential(
-                Linear(channels, channels),
-                ReLU(),
-                Linear(channels, channels),
-            )
-            conv = GPSConv(channels, GINEConv(nn), heads=4,
-                           attn_type=attn_type, attn_kwargs=attn_kwargs)
-            self.convs.append(conv)
-
-        self.mlp = Sequential(
-            Linear(channels, channels // 2),
-            ReLU(),
-            Linear(channels // 2, channels // 4),
-            ReLU(),
-            Linear(channels // 4, 1),
-        )
-        self.redraw_projection = RedrawProjection(
-            self.convs,
-            redraw_interval=1000 if attn_type == 'performer' else None)
-
-    def forward(self, x, pe, edge_index, edge_attr, batch):
-        x_pe = self.pe_norm(pe)
-        x = torch.cat((self.node_emb(x), self.pe_lin(x_pe)), 1)
-
-        edge_attr = self.edge_emb(edge_attr)
-
+    """GPS for long range dataset"""
+    def __init__(self, num_node_features, hidden_channels, num_classes, num_layers):
+        super(GPSLongRange, self).__init__()
+        self.convs = torch.nn.ModuleList()
+        self.convs.append(GCNConv(num_node_features, hidden_channels))
+        for _ in range(num_layers - 1):
+            self.convs.append(GCNConv(hidden_channels, hidden_channels))
+        self.lin = torch.nn.Linear(hidden_channels, num_classes)
+    def forward(self, x, edge_index, batch):
+        # Apply GCN layers
         for conv in self.convs:
-            x = conv(x, edge_index, batch, edge_attr=edge_attr)
-
-        # Skip global pooling for node-level predictions
-        x = self.mlp(x)  # Output will now be [num_nodes, 1] to match `data.y`
-        return x
-    
-
-
-def gps_lr_train(model, train_loader, optimizer):
+            x = conv(x, edge_index)
+            x = F.relu(x)
+        # Global pooling 
+        x = global_mean_pool(x, batch)
+        # Final classification layer
+        return self.lin(x)
+# Train function
+def longrange_train(model, data_loader, optimizer, device):
+    """trains LongRange Classifier"""
     model.train()
     total_loss = 0
-    for data in train_loader:
+    for data in data_loader:
+        data = data.to(device)
+        data.x = data.x.float()  # check if x is float
+        if data.y.ndim > 1 and data.y.size(1) > 1:
+            data.y = data.y.argmax(dim=1) 
         optimizer.zero_grad()
-        model.redraw_projection.redraw_projections()
-        out = model(data.x, data.pe, data.edge_index, data.edge_attr,
-                    data.batch)
-        loss = (out.squeeze() - data.y).abs().mean()
+        out = model(data.x, data.edge_index, data.batch) 
+        loss = F.cross_entropy(out, data.y)
         loss.backward()
-        total_loss += loss.item() * data.num_graphs
         optimizer.step()
-    return total_loss / len(train_loader.dataset)
+        total_loss += loss.item()
+    return total_loss / len(data_loader)
 
+
+# Test function
 @torch.no_grad()
-def gps_lr_test(model, loader):
+def longrange_test(model, data_loader, device):
+    """returns testing accuracy for LongRange Classifier"""
     model.eval()
-    total_error = 0
-    for data in loader:
-        out = model(data.x, data.pe, data.edge_index, data.edge_attr,
-                    data.batch)
-        total_error += (out.squeeze() - data.y).abs().sum().item()
-    return total_error / len(loader.dataset)
+    correct = 0
+    total = 0
+    for data in data_loader:
+        data = data.to(device)
+        data.x = data.x.float()  # check if x is float
+        if data.y.ndim > 1 and data.y.size(1) > 1:
+            data.y = data.y.argmax(dim=1) 
+        out = model(data.x, data.edge_index, data.batch) 
+        pred = out.argmax(dim=1) 
+        correct += (pred == data.y).sum().item()
+        total += data.y.size(0)
+    return correct / total  # Return accuracy

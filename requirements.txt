@@ -1,5 +1,7 @@
-torch
-numpy
-torch-geometric
-matplotlib
-networkx
+torch>=2.0.0
+torch-geometric>=2.0.0
+torchvision>=0.10.0
+torchaudio>=0.10.0
+numpy>=1.20.0
+matplotlib>=3.4.0
+networkx>=2.5
