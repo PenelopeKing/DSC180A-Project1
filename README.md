@@ -85,4 +85,8 @@ Contains models used for benchmarking
     * Running performance tests for GAT and GCN architectures based on layers
         * mod_layers_GCN(dataset, layers, epochs=200) -> final test accuracy
         * mod_layers_GAT(dataset, layers, epochs=200) -> final test accuracy
-
+     
+### run.py
+Runs the entirety of all the training and testing for ALL datasets on ALL models. You can run this on the command line if needed.
+* `pip install -r requirements.txt`
+* `python3 run.py`
