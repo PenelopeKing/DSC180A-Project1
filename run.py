@@ -154,8 +154,8 @@ def main():
         graph_train(imdb_mdl, train_loader, optimizer)
     # test and trian accuracy
     test_acc, train_acc = graph_test(imdb_mdl, test_loader, train_loader)
-    print(f"Final TEST Accuracy on ENZYME: {test_acc:.4f}")
-    print(f"Final TRAIN Accuracy on ENZYME: {train_acc:.4f}")
+    print(f"Final TEST Accuracy on IMDB: {test_acc:.4f}")
+    print(f"Final TRAIN Accuracy on IMDB': {train_acc:.4f}")
 
     print('\nGraphGPS')
     # load data
@@ -311,15 +311,17 @@ def main():
 
     print('\nGIN')
     # Define model, optimizer, and scheduler
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = GINGraph(
         in_channels=num_node_features,
-        hidden_channels=32,
+        hidden_channels=20,
     out_channels=num_classes,
-    num_layers=3 
+    num_layers=3
     ).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=5e-4)
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
     print('Starting training')
+
     # Training model, print final results
     for epoch in range(50):
         train_loss = longrange_train(model, train_loader, optimizer, device)
@@ -329,6 +331,7 @@ def main():
             print(f"EPOCH {epoch} : Train Loss = {train_loss:.4f}, Train Acc = {train_acc:.4f} , Test Acc = {test_acc:.4f}")
         scheduler.step(train_loss)
     print(f"FINAL: Train Loss = {train_loss:.4f}, Train Acc = {train_acc:.4f} , Test Acc = {test_acc:.4f}")
+        
     print('\nGAT')
     # Define model, optimizer, and scheduler
     model = GATGraph(
