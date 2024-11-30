@@ -4,8 +4,8 @@ import os
 import random
 
 # Add the absolute path to the src directory 
-os.chdir('../src')
-src_path = os.path.abspath('../src/')
+#os.chdir('src/')
+src_path = os.path.abspath('src/')
 sys.path.insert(0, src_path)
 
 from setup import *
@@ -123,7 +123,7 @@ def main():
     print(f"Final TRAIN Accuracy on IMDB: {train_acc:.4f}")
 
 
-    print('\GIN')
+    print('\nGIN')
     # init model
     imdb_model = GINGraph(in_channels=imdb_dataset.num_node_features,
                     hidden_channels=32, 
