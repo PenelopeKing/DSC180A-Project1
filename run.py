@@ -72,7 +72,7 @@ def main():
                                 weight_decay=5e-4)
 
     # train and test model
-    for _ in range(EPOCHS):
+    for _ in range(100):
         cora_mdl = node_train(cora_mdl, cora_dataset, optimizer)
 
     # calculate accuracy
@@ -88,7 +88,7 @@ def main():
 
     # init vars and params
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = GPSNodeClassifier(
+    model = GPSNode(
         num_node_features=num_node_features,
         hidden_channels=132,
         num_classes=num_classes,
@@ -104,7 +104,6 @@ def main():
         scheduler.step(loss)
 
     print(f'Final Loss: {loss:.4f}, Final Train Acc: {train_acc:.4f} , Final Test Acc: {test_acc:.4f}')
-
 
     # IMDB # 
     print('\nBEGINNING IMDB-BINARY')
@@ -167,7 +166,7 @@ def main():
     # input params
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     attn_kwargs = {'dropout': 0.5}
-    model = GPS(channels=64,\
+    model = GPSGraph(channels=64,\
                 num_node_features = num_node_features, \
                     num_layers=4, attn_type='performer', \
                         attn_kwargs=attn_kwargs).to(device)
@@ -176,9 +175,9 @@ def main():
 
     # train test acc
     for epoch in range(80):
-        loss = train_gps(model, imdb_train_loader, optimizer, device)
-        test_acc = test_gps(model, imdb_test_loader, device)
-        train_acc = test_gps(model, imdb_train_loader, device)
+        loss = train_gps_graph(model, imdb_train_loader, optimizer, device)
+        test_acc = test_gps_graph(model, imdb_test_loader, device)
+        train_acc = test_gps_graph(model, imdb_train_loader, device)
         scheduler.step(loss)
 
     print(f'Final Loss: {loss:.4f}, Final Train Acc: {train_acc:.4f}, Final Test Acc: {test_acc:.4f}')
@@ -260,7 +259,7 @@ def main():
     # input params
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     attn_kwargs = {'dropout': 0.5}
-    model = GPS(channels=132,\
+    model = GPSGraph(channels=132,\
                 num_node_features = num_node_features, \
                     num_layers=8, attn_type='performer', \
                         attn_kwargs=attn_kwargs).to(device)
@@ -269,9 +268,9 @@ def main():
 
     # train test acc
     for epoch in range(80):
-        loss = train_gps(model, enzyme_train_loader, optimizer, device)
-        test_acc = test_gps(model, enzyme_train_loader, device)
-        train_acc = test_gps(model, enzyme_test_loader, device)
+        loss = train_gps_graph(model, enzyme_train_loader, optimizer, device)
+        test_acc = test_gps_graph(model, enzyme_train_loader, device)
+        train_acc = test_gps_graph(model, enzyme_test_loader, device)
         scheduler.step(loss)
 
     print(f'Final Loss: {loss:.4f},  Final Train Acc: {train_acc:.4f}, Final Test Acc: {test_acc:.4f}')
@@ -310,7 +309,7 @@ def main():
         scheduler.step(train_loss)
     print(f"FINAL: Train Loss = {train_loss:.4f}, Train Acc = {train_acc:.4f} , Test Acc = {test_acc:.4f}")
 
-    print('\GIN')
+    print('\nGIN')
     # Define model, optimizer, and scheduler
     model = GINGraph(
         in_channels=num_node_features,
