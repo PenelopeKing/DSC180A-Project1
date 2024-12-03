@@ -20,7 +20,9 @@ def main():
     print('LOADING DATASETS...')
     imdb_dataset, cora_dataset, enzyme_dataset = load_data()
 
-    # CORA # 
+
+
+    ### CORA ###
     print('\nBEGINNING CORA')
     print('LOADING CORA DATA...')
 
@@ -44,13 +46,13 @@ def main():
     print('\nGIN')
     # init model
     cora_mdl = GINNode(in_channels = cora_dataset.num_features,
-                hidden_channels = 30,
+                hidden_channels =64,
                 out_channels = cora_dataset.num_classes,
                 num_layers = 4)
     optimizer = torch.optim.Adam(cora_mdl.parameters(), lr=0.01)
 
     # train model
-    for epoch in range(500):
+    for epoch in range(250):
         cora_mdl = node_train(model = cora_mdl, 
                                     data = cora_dataset, 
                                     optimizer=optimizer)
@@ -105,7 +107,9 @@ def main():
 
     print(f'Final Loss: {loss:.4f}, Final Train Acc: {train_acc:.4f} , Final Test Acc: {test_acc:.4f}')
 
-    # IMDB # 
+
+
+    ### IMDB ###
     print('\nBEGINNING IMDB-BINARY')
     print('LOADING IMDB-BINARY DATA...')
 
@@ -155,7 +159,8 @@ def main():
     # test and trian accuracy
     test_acc, train_acc = graph_test(imdb_mdl, test_loader, train_loader)
     print(f"Final TEST Accuracy on IMDB: {test_acc:.4f}")
-    print(f"Final TRAIN Accuracy on IMDB': {train_acc:.4f}")
+    print(f"Final TRAIN Accuracy on IMDB: {train_acc:.4f}")
+
 
     print('\nGraphGPS')
     # load data
@@ -174,7 +179,7 @@ def main():
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20, min_lr=0.00001)
 
     # train test acc
-    for epoch in range(80):
+    for epoch in range(150):
         loss = train_gps_graph(model, imdb_train_loader, optimizer, device)
         test_acc = test_gps_graph(model, imdb_test_loader, device)
         train_acc = test_gps_graph(model, imdb_train_loader, device)
@@ -206,6 +211,10 @@ def main():
 
 
     print('\nGIN')
+
+    # set up dataset
+    train_loader, test_loader = load_enzyme()
+
     # init model
     enzyme_mdl = GINGraph(enzyme_dataset.num_features,
                             80,
@@ -217,7 +226,7 @@ def main():
                                 weight_decay=1e-5)
 
     # train model
-    for epoch in range(100):
+    for epoch in range(125):
         loss = graph_train(enzyme_mdl, train_loader, optimizer)
 
     # evaluate on test data
@@ -225,21 +234,21 @@ def main():
     print(f"Final TEST Accuracy on ENZYME: {test_acc:.4f}")
     print(f"Final TRAIN Accuracy on ENZYME: {train_acc:.4f}")
 
-
     print('\nGAT')
     # init model
-    hidden_channels = 132
-    layers = 5
+    # init model
+    hidden_channels = 32
+    layers = 3
     heads = 2
     enzyme_mdl = GATGraph(enzyme_dataset.num_features, 
                             hidden_channels, 
                             enzyme_dataset.num_classes,
                             heads, layers)
-    optimizer = torch.optim.Adam(enzyme_mdl.parameters(), lr=0.000001,
+    optimizer = torch.optim.Adam(enzyme_mdl.parameters(), lr=0.0001,
                                 weight_decay=1e-5)
 
     # train model
-    for epoch in range(100):
+    for epoch in range(150):
         enzyme_mdl = graph_train(enzyme_mdl, train_loader, optimizer)
         test_acc, train_acc = graph_test(enzyme_mdl, test_loader, train_loader)
         if epoch % 10 == 0:
@@ -249,7 +258,8 @@ def main():
     test_acc, train_acc = graph_test(enzyme_mdl, test_loader, train_loader)
     print(f"Final TEST Accuracy on ENZYME: {test_acc:.4f}")
     print(f"Final TRAIN Accuracy on ENZYME: {train_acc:.4f}")
-
+    
+    
     print('\nGraphGPS')
     # load data
     enzyme_train_loader, enzyme_test_loader = load_enzyme()
@@ -263,11 +273,11 @@ def main():
                 num_node_features = num_node_features, \
                     num_layers=8, attn_type='performer', \
                         attn_kwargs=attn_kwargs).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.00000001, weight_decay=1e-5)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.0005, weight_decay=0.01)
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20, min_lr=0.0001)
 
     # train test acc
-    for epoch in range(80):
+    for epoch in range(200):
         loss = train_gps_graph(model, enzyme_train_loader, optimizer, device)
         test_acc = test_gps_graph(model, enzyme_train_loader, device)
         train_acc = test_gps_graph(model, enzyme_test_loader, device)
@@ -276,7 +286,7 @@ def main():
     print(f'Final Loss: {loss:.4f},  Final Train Acc: {train_acc:.4f}, Final Test Acc: {test_acc:.4f}')
 
 
-    # PEPTIDE-FUNC (long range) # 
+    ### PEPTIDE-FUNC (long range) ###
     # load the data
     print('\nBEGINNING LONG RANGE DATASET (PEPTIDE-FUNC)')
     mp.set_start_method('spawn', force=True)
@@ -286,6 +296,7 @@ def main():
     num_node_features = 9 
 
     print('\nGCN')
+
     # Define model, optimizer, and scheduler
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = GCNGraph(
@@ -299,7 +310,7 @@ def main():
     print('Starting training')
 
     # Training model, print final results
-    for epoch in range(80):
+    for epoch in range(150):
         train_loss = longrange_train(model, train_loader, optimizer, device)
         train_acc = longrange_test(model, train_loader, device)
         test_acc = longrange_test(model, test_loader, device)
@@ -310,20 +321,21 @@ def main():
     print(f"FINAL: Train Loss = {train_loss:.4f}, Train Acc = {train_acc:.4f} , Test Acc = {test_acc:.4f}")
 
     print('\nGIN')
+
     # Define model, optimizer, and scheduler
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = GINGraph(
         in_channels=num_node_features,
-        hidden_channels=20,
+        hidden_channels=25,
     out_channels=num_classes,
-    num_layers=3
+    num_layers=5
     ).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=5e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-2)
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
     print('Starting training')
 
     # Training model, print final results
-    for epoch in range(50):
+    for epoch in range(100):
         train_loss = longrange_train(model, train_loader, optimizer, device)
         train_acc = longrange_test(model, train_loader, device)
         test_acc = longrange_test(model, test_loader, device)
@@ -331,9 +343,10 @@ def main():
             print(f"EPOCH {epoch} : Train Loss = {train_loss:.4f}, Train Acc = {train_acc:.4f} , Test Acc = {test_acc:.4f}")
         scheduler.step(train_loss)
     print(f"FINAL: Train Loss = {train_loss:.4f}, Train Acc = {train_acc:.4f} , Test Acc = {test_acc:.4f}")
-        
+
     print('\nGAT')
     # Define model, optimizer, and scheduler
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = GATGraph(
         in_channels=num_node_features,
         hidden_channels=32,
@@ -346,7 +359,7 @@ def main():
     print('Starting training')
 
     # Training model, print final results
-    for epoch in range(80):
+    for epoch in range(150):
         train_loss = longrange_train(model, train_loader, optimizer, device)
         train_acc = longrange_test(model, train_loader, device)
         test_acc = longrange_test(model, test_loader, device)
@@ -355,7 +368,7 @@ def main():
         scheduler.step(train_loss)
         
     print(f"FINAL: Train Loss = {train_loss:.4f}, Train Acc = {train_acc:.4f} , Test Acc = {test_acc:.4f}")
-
+        
     print('\nGraphGPS')
     # Define model, optimizer, and scheduler
     model = GPSLongRange(

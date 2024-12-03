@@ -6,7 +6,6 @@ Data can be retrieved their through pytorch_geometric data library, or through `
 
 ## Running the Code
 To install the dependencies, run the following command from the root directory of the project: `pip install -r requirements.txt`
-* There is also a conda yaml file available too
 
 #### Building and Benchmarking Models
 Examples of how to implement and benchmark the models for the 3 datasets can be found in their respective .ipynb notebooks: GAT.ipynb, GCN.ipynb, GPS.ipynb, and GIN.ipynb. Seeing how GAT and GCN compare across differing layer depths can be seen at GCN_vs_GAT_layers.ipynb.
