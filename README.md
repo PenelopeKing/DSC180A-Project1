@@ -10,7 +10,7 @@ To install the dependencies, run the following command from the root directory o
 Alternatively, you can also create a conda environment by running: `conda env create -f environment.yml`
 
 #### Building and Benchmarking Models
-Examples of how to implement and benchmark the models for the 3 datasets can be found in their respective .ipynb notebooks: GAT.ipynb, GCN.ipynb, GPS.ipynb, and GIN.ipynb. Seeing how GAT and GCN compare across differing layer depths can be seen at GCN_vs_GAT_layers.ipynb.
+Examples of how to implement and benchmark the models for the 4 datasets can be found in their respective .ipynb notebooks: GAT.ipynb, GCN.ipynb, GPS.ipynb,  GIN.ipynb, and long_range.ipynb. Seeing how GAT and GCN compare across differing layer depths can be seen at GCN_vs_GAT_layers.ipynb.
 
 ##  File Descriptions
 
@@ -49,7 +49,7 @@ Contains models used for benchmarking
         * GINNode(in_channels, hidden_channels, out_channels, heads, num_layers)
         * GPSGraph(num_node_features, channels, num_layers, attn_type, attn_kwargs)
         * GPSNode(num_node_features, hidden_channels, num_classes, num_layers))
-* Training and Testing methods for graph and node classifier models -- note that GraphGPS and long range dataset have their own special train/test functions 
+* Training and Testing methods for graph and node classifier models -- note that GraphGPS and the PEPTIDE-FUNC long range dataset have their own special train/test functions.
     * node_train(model, data, optimizer) -> torch_geometric.nn.model (Node)
     * node_test(model, data) -> test_acc, train_acc, pred
     * graph_train(model, train_loader, optimizer, criterion = F.nll_loss) -> torch_geometric.nn.model (Graph)
@@ -61,29 +61,29 @@ Contains models used for benchmarking
     * longrange_train(model, data_loader, optimizer, device): for any model training on long range dataset
     * longrange_test(model, data_loader, device): for any model training on long range dataset
 ### etl.py
-* Helper Functions
-    * Visualization
+* Helper Functions:
+    * Visualization:
         * visualize_graph(data, title) -> networkx graph
             * nodes are colored by degree
         * visualize_by_pred_class(pred, data, title') -> networkx graph
             * nodes are colored by prediction
-    * Calculate statistics
+    * Calculate statistics:
         * calculate_network_statistics(G: graph) -> dict of degree, diameter, etc
         * get_data_description(dataset) -> None
             * prints basic data descriptions and stats for dataset
-    * Preprocess Data (split train/test loader)
+    * Preprocess Data (split train/test loader):
         * preprocess_data(dataset, onehot = False, batch_size = 64)
             * will one hot encode data if onehot = True
-    * Loading 3 datasets (CORA, IMDB_BINARY, ENYZME)
+    * Loading 3 datasets (CORA, IMDB_BINARY, ENYZME):
         * load_data() -> imdb_dataset, cora_dataset, enzyme_dataset
     * Loading all 4 datasets( CORA, IMDB_BINARY, ENZYME, PEPTIDE-FUNC)
         * load_data_all() -> imdb_dataset, cora_dataset, enzyme_dataset, peptide_dataset
-    * Load with Train-Test split (80-20 with shuffle)
+    * Load with Train-Test split (80-20 with shuffle):
         * load_imdb()
         * load_cora()
         * load_enzyme() 
         * load_peptides_func()
-    * Running performance tests for GAT and GCN architectures based on layers
+    * Running performance tests for GAT and GCN architectures based on layers:
         * mod_layers_GCN(dataset, layers, epochs=200) -> final test accuracy
         * mod_layers_GAT(dataset, layers, epochs=200) -> final test accuracy
      
