@@ -1,5 +1,5 @@
 # DSC180A Project 1
-In this project, we aim to introduce the novel transformer-based graph learning model and benchmark its performance against state-of-the-art graph neural networks (GNNs), specifically focusing on the CORA, IMDB-BINARY, ENZYME, and PEPTIDE-FUNC datasets. We also seek to observe how varying parameters affects performance, such as length, width, depth, datasets, tasks, etc. The models we are benchmarking are the following: GCN, GIN, GAT, and GraphGPS. Each have their own unique pros and cons and differing mechanisms.
+In this project, I aim to introduce the a transformer-based graph learning model and benchmark its performance against state-of-the-art graph neural networks (GNNs), specifically focusing on the CORA, IMDB-BINARY, ENZYME, and PEPTIDE-FUNC datasets. We also seek to observe how varying parameters affects performance, such as length, width, depth, datasets, tasks, etc. The models we are benchmarking are the following: GCN, GIN, GAT, and GraphGPS. Each have their own unique pros and cons and differing mechanisms.
 
 ## Retrieving the Data
 Data can be retrieved their through pytorch_geometric data library, or through `etl.load_data_all()`, which will import 4 datasets from the pytorch_geometric data library: CORA, ENZYME, IMDB-BINARY, and PEPTIDE-FUNC.
@@ -13,7 +13,6 @@ Alternatively, you can also create a conda environment by running: `conda env cr
 Examples of how to implement and benchmark the models for the 4 datasets can be found in their respective .ipynb notebooks: GAT.ipynb, GCN.ipynb, GPS.ipynb,  GIN.ipynb, and long_range.ipynb. Seeing how GAT and GCN compare across differing layer depths can be seen at GCN_vs_GAT_layers.ipynb.
 
 ##  File Descriptions
-
 In `/notebooks/` you will find the best use cases for the code and models. The 3 main datasets (ENZYME, CORA, IMDB-BINARY) are all analyzed in the same notebooks in their respective model's notebook. The longe range graph benchmark dataset (from https://arxiv.org/abs/2206.08164) is analyzed in its own special notebook `long_range.ipynb`.
 
 ### eda.ipynb
