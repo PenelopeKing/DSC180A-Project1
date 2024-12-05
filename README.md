@@ -9,6 +9,8 @@ To install the dependencies, run the following command from the root directory o
 
 Alternatively, you can also create a conda environment by running: `conda env create -f environment.yml`
 
+* The `src` directory contains all my code used to build and train the models
+
 #### Building and Benchmarking Models
 Examples of how to implement and benchmark the models for the 4 datasets can be found in their respective .ipynb notebooks: GAT.ipynb, GCN.ipynb, GPS.ipynb,  GIN.ipynb, and long_range.ipynb. Seeing how GAT and GCN compare across differing layer depths can be seen at GCN_vs_GAT_layers.ipynb.
 
