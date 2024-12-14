@@ -1,4 +1,4 @@
-# DSC180A Project 1
+# Comparing Graph Neural Networks Against Transformer Based Graph Learning
 In this project, I aim to introduce the a transformer-based graph learning model and benchmark its performance against state-of-the-art graph neural networks (GNNs), specifically focusing on the CORA, IMDB-BINARY, ENZYME, and PEPTIDE-FUNC datasets. We also seek to observe how varying parameters affects performance, such as length, width, depth, datasets, tasks, etc. The models we are benchmarking are the following: GCN, GIN, GAT, and GraphGPS. Each have their own unique pros and cons and differing mechanisms.
 
 ## Retrieving the Data
